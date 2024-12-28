@@ -14,6 +14,11 @@
             <item
                 android:id="@+id/wiiupro"
                 android:title="@string/wiiupro" />
+            <item
+                android:id="@+id/wiisync"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:title="@string/wiisync" />
         </menu>
     </item>
 

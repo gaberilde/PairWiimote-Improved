@@ -17,7 +17,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.TextView;
-
+import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -35,12 +35,15 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
     private ArrayList<BluetoothDevice> devices = new ArrayList<>();
     private ControllerType controllerType = ControllerType.WIIMOTE;
     private String localMAC = "";
+    TextView instructions;
+    static boolean pair = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         setSupportActionBar(findViewById(R.id.toolbar));
+        instructions = findViewById(R.id.instructions);
         // if we don't have bluetooth, quit
         if (adapter == null) {
             new AlertDialog.Builder(this)
@@ -68,7 +71,12 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
             registerReceiver(receiver, filter);
             IntentFilter filter2 = new IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST);
             registerReceiver(receiver, filter2);
-            adapter.startDiscovery();
+            IntentFilter filter3 = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+            registerReceiver(receiver, filter3);
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+                adapter.startDiscovery();
+            }
         }
     }
 
@@ -77,12 +85,12 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
             String action = intent.getAction();
             if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                devices.add(device);
-                ((BluetoothDeviceAdapter) recyclerView.getAdapter()).notifyNewItem();
-                if (!adapter.isDiscovering()) {
-                    findViewById(R.id.progressBar).setVisibility(View.GONE);
+                if (device.getName() != null && device.getName().contains("Nintendo RVL-")) {
+                    devices.add(device);
+                    ((BluetoothDeviceAdapter) recyclerView.getAdapter()).notifyNewItem();
                 }
-            } else if (action.equals(BluetoothDevice.ACTION_PAIRING_REQUEST)) {
+            } else if (action.equals(BluetoothDevice.ACTION_PAIRING_REQUEST) && pair) {
+                pair = false;
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 try {
                     byte[] pin = new byte[6];
@@ -96,12 +104,21 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
                             case WIIUPRO:
                                 // Wii U Pro Controller pins seem to be the host's MAC address
                                 pin[i] = Integer.decode("0x" + localMAC.split(":")[i]).byteValue();
+                                break;
+                            case WIISYNC:
+                                // Wiimote is the host's MAC address reversed
+                                pin[i] = Integer.decode("0x" + localMAC.split(":")[5 - i]).byteValue();
+                                break;
                         }
                     }
+                    Toast.makeText(context, "Pairing...", Toast.LENGTH_SHORT).show();
                     device.setPin(pin);
                     device.getClass().getMethod("setPairingConfirmation", boolean.class).invoke(device, true);
                 } catch (Exception ignored) {
                 }
+            }
+            if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                findViewById(R.id.progressBar).setVisibility(View.GONE);
             }
         }
     };
@@ -149,7 +166,7 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
                 break;
             case R.id.wiimote:
                 controllerType = ControllerType.WIIMOTE;
-                ((TextView) findViewById(R.id.instructions)).setText(R.string.wiimote_instructions);
+                instructions.setText(R.string.wiimote_instructions);
                 break;
             case R.id.wiiupro:
                 final EditText input = new EditText(this);
@@ -169,13 +186,38 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
                         .setMessage(R.string.local_mac_instructions)
                         .setView(input)
                         .setPositiveButton(android.R.string.ok, (dialogInterface, i) -> {
-                            if (!input.getText().toString().matches("[0-9a-fA-F]:{5}[0-9a-fA-F]")) {
-                                input.setError(getString(R.string.local_mac_error));
-                            } else {
                                 localMAC = input.getText().toString();
                                 controllerType = ControllerType.WIIUPRO;
-                                ((TextView) findViewById(R.id.instructions)).setText(R.string.wiiupro_instructions);
-                            }
+                                instructions.setText(R.string.wiiupro_instructions);
+                                Toast.makeText(this, "Set successfully", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton(android.R.string.cancel, (dialogInterface, i) -> {
+                            dialogInterface.cancel();
+                        })
+                        .show();
+                break;
+            case R.id.wiisync:
+                final EditText input2 = new EditText(this);
+                input2.setHint(R.string.local_mac_hint);
+                input2.setFilters(new InputFilter[] { (charSequence, start, end, spanned, sstart, send) -> {
+                    for (int i = start; i < end; i++) {
+                        if (!String.valueOf(charSequence.charAt(i)).matches("[0-9a-fA-F:]")) {
+                            input2.setError(getString(R.string.local_mac_error));
+                            return "";
+                        }
+                    }
+                    return null;
+                } });
+                input2.setInputType(InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                new AlertDialog.Builder(this)
+                        .setTitle(R.string.local_mac_title)
+                        .setMessage(R.string.local_mac_instructions)
+                        .setView(input2)
+                        .setPositiveButton(android.R.string.ok, (dialogInterface, i) -> {
+                            localMAC = input2.getText().toString();
+                            controllerType = ControllerType.WIISYNC;
+                            instructions.setText(R.string.wiiupro_instructions);
+                            Toast.makeText(this, "Set successfully", Toast.LENGTH_SHORT).show();
                         })
                         .setNegativeButton(android.R.string.cancel, (dialogInterface, i) -> {
                             dialogInterface.cancel();
@@ -198,6 +240,6 @@ public class MainActivity extends AppCompatActivity implements ActivityCompat.On
     }
 
     private enum ControllerType {
-        WIIUPRO, WIIMOTE
+        WIIUPRO, WIIMOTE, WIISYNC
     }
 }

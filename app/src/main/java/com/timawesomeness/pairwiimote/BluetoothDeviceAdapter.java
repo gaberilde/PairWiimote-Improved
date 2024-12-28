@@ -33,6 +33,7 @@ public class BluetoothDeviceAdapter extends RecyclerView.Adapter<BluetoothDevice
 
     @Override
     public void onBindViewHolder(@NonNull BluetoothDeviceViewHolder holder, int position) {
+        try {
         BluetoothDevice device = data.get(position);
         holder.top.setText(device.getName() == null
                 ? holder.itemView.getResources().getString(R.string.unnamed_device)
@@ -40,6 +41,7 @@ public class BluetoothDeviceAdapter extends RecyclerView.Adapter<BluetoothDevice
         holder.bottom.setText(device.getAddress());
         holder.itemView.setOnClickListener(view -> {
             BluetoothAdapter.getDefaultAdapter().cancelDiscovery();
+            MainActivity.pair = true;
             device.createBond();
         });
         if (device.getName() != null && device.getName().contains("Nintendo RVL-")) {
@@ -48,6 +50,8 @@ public class BluetoothDeviceAdapter extends RecyclerView.Adapter<BluetoothDevice
         } else {
             holder.top.setTextColor(holder.bottom.getTextColors());
             holder.top.setTypeface(null, Typeface.NORMAL);
+        }
+        } catch (IndexOutOfBoundsException e) {
         }
     }
 
